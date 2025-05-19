@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three/examples/js/loaders/GLTFLoader.js"></script>
+    
+    <style>
+        /* Dark Mode Styles */
+        body {
+            height: 100vh;
+            background: #121212; /* Deep Black Background */
+            color: #e0e0e0; /* Light Grey Text */
+        }
+
+        .container {
+            max-width: 500px;
+            background: #1e1e1e; /* Dark Grey Background */
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        .container h2 {
+            color: #bb86fc; /* Soft Purple */
+            font-weight: bold;
+        }
+
+        .form-control {
+            background: #292929; /* Dark Input Field */
+            border: 2px solid #444; /* Subtle Border */
+            color: #e0e0e0;
+        }
+
+        .form-control:focus {
+            background: #333;
+            border-color: #bb86fc; /* Purple Glow */
+            box-shadow: 0px 0px 10px rgba(187, 134, 252, 0.8);
+        }
+
+        .btn-primary {
+            background-color: #bb86fc;
+            border-color: #bb86fc;
+            color: #121212;
+            transition: 0.3s;
+        }
+
+        .btn-primary:hover {
+            background-color: #9b59b6;
+            border-color: #9b59b6;
+        }
+
+        .btn-secondary {
+            background-color: #03dac6;
+            border-color: #03dac6;
+            color: #121212;
+        }
+
+        .btn-secondary:hover {
+            background-color: #00bfa5;
+            border-color: #00bfa5;
+        }
+
+        .flash-container {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 500px;
+            z-index: 1050;
+        }
+
+        .alert {
+            background-color: #292929;
+            border-left: 5px solid #bb86fc;
+            color: #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0px 2px 10px rgba(187, 134, 252, 0.2);
+        }
+
+        .btn-close {
+            filter: invert(1);
+        }
+
+        #droneContainer{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+    </style>
+</head>
+<body>
+    
+
+    <!-- Flash Message Container -->
+    <!-- Upload Form Container -->
+    <div id="droneContainer"></div>
+    <div class="container">
+        <h2>📂 Upload a File</h2>
+        <form method="POST" enctype="multipart/form-data">
+            <div class="mb-3">
+                <input class="form-control" type="file" name="file" accept=".dat" required>
+            </div>
+            <button class="btn btn-primary" type="submit">Upload</button>
+        </form>
+    </div>
+
+    <script>
+        // Automatically hide flash messages after 3 seconds
+        setTimeout(() => {
+            let alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                let bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 3000);
+    </script>
+    <script>
+        // Set up scene, camera, and renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        // renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(500,200);
+        document.getElementById('droneContainer').appendChild(renderer.domElement);
+
+        // Add lighting
+        const light = new THREE.AmbientLight(0xffffff, 1.5);
+        scene.add(light);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        let droneModel = null;
+
+        // Load Drone Model
+        const loader = new THREE.GLTFLoader();
+        loader.load("{{url_for('static', filename='models/drone_design.glb')}}", function (gltf) {
+            droneModel = gltf.scene;
+            droneModel.scale.set(1.5, 1.5, 1.5); // Adjust model size
+            droneModel.position.set(0, 0, 0); // Center the model
+            droneModel.rotation.x = -0.3; // Initial tilt forward (nose down)
+            scene.add(droneModel);
+        }, undefined, function (error) {
+            console.error('Error loading model:', error);
+        });
+
+        camera.position.set(0, 0, 3); // Adjust camera to fit the model
+
+        // Cursor tracking (left-right and up-down)
+        let mouseX = 0, mouseY = 0;
+        let targetRotationY = 0, targetRotationX = -0.3; // Start with initial tilt
+
+        window.addEventListener("mousemove", (event) => {
+            const halfWidth = window.innerWidth / 2;
+            const halfHeight = window.innerHeight / 2;
+
+            mouseX = (event.clientX - halfWidth) / halfWidth;
+            mouseY = (event.clientY - halfHeight) / halfHeight;
+
+            targetRotationY = mouseX * 1.2;
+            targetRotationX = mouseY * 0.8 + 0.5; // Maintain initial tilt
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (droneModel) {
+                droneModel.rotation.y += (targetRotationY - droneModel.rotation.y) * 0.08;
+                droneModel.rotation.x += (targetRotationX - droneModel.rotation.x) * 0.08;
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Responsive resizing
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+
+</body>
+</html>
+{% endblock %}

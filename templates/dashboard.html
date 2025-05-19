@@ -1,0 +1,256 @@
+{% extends 'base.html' %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone Dashboard</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        body {
+            background-color: #121212;
+            color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #00eaff;
+            text-shadow: 0px 0px 10px rgba(0, 234, 255, 0.8);
+        }
+
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 1200px;
+            margin: auto;
+            padding: 10px;
+        }
+
+        .full-width {
+            grid-column: span 2;
+        }
+
+        .chart-container {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 20px rgba(0, 234, 255, 0.3);
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-container h2 {
+            color: #00eaff;
+            text-shadow: 0px 0px 5px rgba(0, 234, 255, 0.8);
+        }
+
+        .chart-container div {
+            width: 100%;
+            height: 100%;
+        }
+
+        #map {
+            height: 500px;
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #00eaff;
+            border-radius: 10px;
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <h1>🚀 Drone Dashboard</h1>
+
+    <div class="dashboard-container">
+        <div class="full-width">
+            <h2>📍 Flight Path</h2>
+            <div id="map"></div>
+        </div>
+        <div class="chart-container">
+            <h2>🔋 Battery Status</h2>
+            <div id="batteryChart"></div>
+        </div>
+        <div class="chart-container">
+            <h2>📏 Altitude & Speed</h2>
+            <div id="altitudeChart"></div>
+        </div>
+        <div class="chart-container">
+            <h2>📡 IMU Sensor Data</h2>
+            <div id="imuChart"></div>
+        </div>
+        <div class="chart-container">
+            <h2>🎥 Gimbal Angles</h2>
+            <div id="gimbalChart"></div>
+        </div>
+        <div class="chart-container">
+            <h2>⚡ Current Consumption</h2>
+            <div id="currentChart"></div>
+        </div>
+        <div class="chart-container">
+            <h2>🔌 Voltage Levels</h2>
+            <div id="voltageChart"></div>
+        </div>
+        <div class="chart-container">
+            <h2>🌡️ Battery Temperature</h2>
+            <div id="temperatureChart"></div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/data');
+                const data = await response.json();
+                console.log("API Data:", data); // Debugging: See if data is correct
+
+                if (data.error) return alert("No data available.");
+
+                plotMap(data.latitude, data.longitude);
+                plotBatteryChart(data.battery);
+                plotAltitudeChart(data.altitude, data.velN, data.velE, data.velD);
+                plotIMUChart(data.gyroX, data.gyroY, data.gyroZ);
+                plotGimbalChart(data.gimbal_roll, data.gimbal_pitch, data.gimbal_yaw);
+                plotCurrentChart(data.current);
+                plotVoltageChart(data.voltage);
+                plotTemperatureChart(data.temperature);
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                alert("Failed to load data.");
+            }
+        }
+
+        function plotMap(latitudes, longitudes) {
+    if (!latitudes.length || !longitudes.length) return alert("No GPS data available.");
+
+    // Initialize map with Carto Positron (light base)
+    const map = L.map('map', { zoomControl: false }).setView([latitudes[0], longitudes[0]], 15);
+
+    // Carto Positron Light (Best for a Lavender theme)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://carto.com/">Carto</a>',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Define flight path with soft lavender
+    const path = latitudes.map((lat, i) => [lat, longitudes[i]]);
+    const polyline = L.polyline(path, { color: '#fff846', weight: 3, opacity: 0.9 }).addTo(map);
+
+    // Mark latest drone position with a glowing lavender marker
+    const lastIndex = latitudes.length - 1;
+    L.circleMarker([latitudes[lastIndex], longitudes[lastIndex]], {
+        radius: 6,
+        fillColor: "#D8BFD8",
+        color: "#800080",
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9
+    }).addTo(map).bindPopup("📍 Latest Position");
+
+    // Fit map to flight path
+    map.fitBounds(polyline.getBounds());
+
+    // Ensure map renders properly
+    setTimeout(() => {
+        map.invalidateSize();
+    }, 500);
+}
+
+
+
+        function createChart(container, option) {
+            let chart = echarts.init(document.getElementById(container));
+            chart.setOption(option);
+        }
+
+        function plotBatteryChart(batteryData) {
+            createChart('batteryChart', {
+                series: [{ type: 'gauge', data: [{ value: batteryData[batteryData.length - 1], name: 'Battery (%)' }] }]
+            });
+        }
+
+        function plotAltitudeChart(altitude, velN, velE, velD) {
+            createChart('altitudeChart', {
+                xAxis: { type: 'category', data: altitude.map((_, i) => i) },
+                yAxis: { type: 'value' },
+                series: [
+                    { name: 'Altitude', type: 'line', data: altitude },
+                    { name: 'Speed N', type: 'line', data: velN },
+                    { name: 'Speed E', type: 'line', data: velE },
+                    { name: 'Speed D', type: 'line', data: velD }
+                ]
+            });
+        }
+
+        function plotIMUChart(gyroX, gyroY, gyroZ) {
+            createChart('imuChart', {
+                xAxis: { type: 'category', data: ['Gyro X', 'Gyro Y', 'Gyro Z'] },
+                yAxis: { type: 'value' },
+                series: [{ type: 'bar', data: [gyroX.slice(-1)[0], gyroY.slice(-1)[0], gyroZ.slice(-1)[0]] }]
+            });
+        }
+
+        function plotGimbalChart(roll, pitch, yaw) {
+            createChart('gimbalChart', {
+                radar: { indicator: [{ name: 'Roll' }, { name: 'Pitch' }, { name: 'Yaw' }] },
+                series: [{ type: 'radar', data: [{ value: [roll.slice(-1)[0], pitch.slice(-1)[0], yaw.slice(-1)[0]] }] }]
+            });
+        }
+
+        function plotCurrentChart(currentData) {
+            createChart('currentChart', {
+                xAxis: { type: 'category', data: currentData.map((_, i) => i) },
+                yAxis: { type: 'value' },
+                series: [{ name: 'Current (A)', type: 'line', data: currentData }]
+            });
+        }
+
+        function plotVoltageChart(voltageData) {
+            createChart('voltageChart', {
+                xAxis: { type: 'category', data: ['Cell 1', 'Cell 2', 'Cell 3', 'Cell 4', 'Cell 5', 'Cell 6'] },
+                yAxis: { type: 'value' },
+                series: [{ type: 'bar', data: Object.values(voltageData).map(v => v.slice(-1)[0]) }]
+            });
+        }
+
+        function plotTemperatureChart(temperatureData) {
+            createChart('temperatureChart', {
+                xAxis: { type: 'category', data: temperatureData.map((_, i) => i) },
+                yAxis: { type: 'value' },
+                series: [{ name: 'Battery Temp (°C)', type: 'line', data: temperatureData }]
+            });
+        }
+
+        fetchData();
+    </script>
+
+</body>
+
+</html>
+{% endblock %}
